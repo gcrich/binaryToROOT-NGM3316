@@ -27,9 +27,49 @@
 #include "TTree.h"
 #include "TMath.h"
 #include "TTreeIndex.h"
-
+#include "TTemplWaveform.hh"
+#include "SystemOfUnits.hh"
 
 using namespace std;
+
+
+//
+//
+// ASSUMING SAMPLING FREQUENCY OF 250 MS/s
+// ASSUMING WAVEFORMS SHORTER THAN 65536 SAMPLES
+//
+//
+
+
+
+// global buffer for waveforms
+// so we don't have to reallocate it every time
+Short_t* waveformBuffer;
+
+
+// the file pointer supplied should already have the location pointer set correctly..
+TTemplWaveform<Short_t>* getWaveformForChannel( ifstream* inFile, UInt_t* packetWords, UInt_t nSamples ) {
+    
+    UInt_t tmpWord;
+    
+    for( Int_t i = 0; i < (nSamples / 2); i++ ) {
+        inFile->read( (char*)&tmpWord, 4 );
+        (*packetWords) -= 1;
+        waveformBuffer[i*2] = (Short_t)(tmpWord & 0xffff);
+        waveformBuffer[i*2 + 1] = (Short_t)((tmpWord & 0xffff0000) >> 16);
+    }
+    
+    TTemplWaveform<Short_t>* wave = new TTemplWaveform<Short_t>( waveformBuffer, nSamples );
+    wave->SetSamplingFreq( 250 * CLHEP::megahertz );
+    
+    if(!wave) {
+        printf("problem making wave!\n");
+    }
+    return wave;
+}
+
+
+
 
 Int_t main( Int_t argc, char** argv ) {
     
@@ -43,7 +83,7 @@ Int_t main( Int_t argc, char** argv ) {
 	}
     
     
-    
+    waveformBuffer = new Short_t[65536];
     
     TString inputFilename(argv[1]);
     
@@ -93,7 +133,9 @@ Int_t main( Int_t argc, char** argv ) {
     Bool_t mawTestFlag;
     Bool_t pileupFlag;
     UInt_t nSamples;
-    UShort_t waveform[65536];
+//    UShort_t waveform[65536];
+    TTemplWaveform<Short_t>* wave;
+    TTemplWaveform<Short_t>* sortingWave = new TTemplWaveform<Short_t>();
     
     UInt_t readBuffer[4096];
     char* bufferPointer = (char*)readBuffer;
@@ -119,10 +161,11 @@ Int_t main( Int_t argc, char** argv ) {
     unsortedTree->Branch( "mawTestFlag", &mawTestFlag, "mawTestFlag/O" );
     unsortedTree->Branch( "pileupFlag", &pileupFlag, "pileupFlag/O" );
     unsortedTree->Branch( "nSamples", &nSamples, "nSamples/i" );
-    unsortedTree->Branch( "waveform", waveform, "waveform[nSamples]/s" );
+    unsortedTree->Branch( "waveform", &sortingWave );
     
     
-    
+//    we have this one around just to set the branch up - delete it
+//    wave->Delete();
 
     
 
@@ -344,12 +387,15 @@ Int_t main( Int_t argc, char** argv ) {
                 pileupFlag = (tmpWord & 0x4000000 ) >> 26;
                 mawTestFlag = ( tmpWord & 0x8000000 ) >> 27;
                 
-                for( Int_t i = 0; i < (nSamples / 2 ); i++ ) {
-                    inFile.read( (char*)&tmpWord, 4 );
-                    packetWords -= 1;
-                    waveform[i*2] = tmpWord & 0xffff;
-                    waveform[i*2 + 1] = (tmpWord & 0xffff0000) >> 16;
-                }
+//                for( Int_t i = 0; i < (nSamples / 2 ); i++ ) {
+//                    inFile.read( (char*)&tmpWord, 4 );
+//                    packetWords -= 1;
+//                    waveform[i*2] = tmpWord & 0xffff;
+//                    waveform[i*2 + 1] = (tmpWord & 0xffff0000) >> 16;
+//                }
+                
+                wave = getWaveformForChannel( &inFile, &packetWords, nSamples );
+                unsortedTree->SetBranchAddress("waveform", &wave);
                 
                 //                    inFile.read( (char*)&mawTestData, 4 );
                 //                    packetWords -= 1;
@@ -359,6 +405,8 @@ Int_t main( Int_t argc, char** argv ) {
                 
                 unsortedTree->Fill();
                 index++;
+                
+                wave->Delete();
             }
         }
         
@@ -380,6 +428,9 @@ Int_t main( Int_t argc, char** argv ) {
         if( DEBUG ) {
             printf( "Tree index contains %lli entries\n", treeIndex->GetN() );
         }
+        
+        unsortedTree->SetBranchAddress( "waveform", &sortingWave );
+        sis3316tree->SetBranchAddress("waveform", &sortingWave );
         
         for( Int_t i = 0; i < treeIndex->GetN(); i++ ) {
             
@@ -417,4 +468,7 @@ Int_t main( Int_t argc, char** argv ) {
     unsortedTree->Delete();
     sis3316tree->Write("sis3316tree", TObject::kOverwrite);
     outFile->Close();
+    
+    
+    delete [] waveformBuffer;
 }
