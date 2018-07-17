@@ -404,6 +404,16 @@ Int_t main( Int_t argc, char** argv ) {
 					mawTestData = 0;
 				
 				
+					//If run stopped during spill writing, the program can crash
+					//This isn't a great fix, since we will have partial data from the 
+					//channels before this and nothing from this or channels after, but
+					//it will allow it to run. A better solution is to only add files to
+					//the TTree once we're sure we've reached the end of the last channel 
+					//in the spill
+					if (inFile.fail()) {
+						break;
+					}
+
 				
 					unsortedTree->Fill();
 					index++;
