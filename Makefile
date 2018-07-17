@@ -1,5 +1,5 @@
 CC              = g++
-TWAVEFORMBASE	= ../TWaveform-casa
+#TWAVEFORMBASE	= ../TWaveform-casa
 CCFLAGS         = -g $(shell root-config --cflags)
 INCLUDE         = -I$(shell root-config --incdir) -I$(TWAVEFORMBASE)/WaveBase
 ROOTLIBS        = $(shell root-config --libs)
